@@ -1,69 +1,67 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>🎵 Sync Player 🔥</title>
-  <style>
-    body {
-      background: #111;
-      color: #eee;
-      font-family: monospace;
-      text-align: center;
-      padding: 60px;
-    }
-    h1 { font-size: 2.5em; margin-bottom: 20px; }
-    input, button {
-      font-size: 1.2em;
-      margin: 10px;
-      padding: 10px 20px;
-    }
-    #countdown {
-      font-size: 3em;
-      margin: 20px;
-      color: #00ffcc;
-    }
-  </style>
+  <title>Synchronised Player 🔊</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>🎶 SYNC PLAYER 🎶</h1>
-  <input type="file" id="fileInput" accept="audio/*"><br>
-  <audio id="audio" controls style="display:none;"></audio>
-  <div id="countdown"></div>
-  <button onclick="startCountdown()">🔊 PLAY ENSEMBLE 🔊</button>
+  <h1>🔥 Sync Audio Player</h1>
+  <input type="file" id="fileInput" accept="audio/*">
+  <br>
+  <audio id="audioPlayer" controls></audio>
 
   <script>
-    const fileInput = document.getElementById('fileInput');
-    const audio = document.getElementById('audio');
+    // === CONFIG FIREBASE ===
+    const firebaseConfig = {
+        apiKey: "AIzaSyBNtP-si49U1vt7_AaMu7jEezugoW1fRf0",
+        authDomain: "syncaudioplay.firebaseapp.com",
+        databaseURL: "https://syncaudioplay-default-rtdb.firebaseio.com",
+        projectId: "syncaudioplay",
+        storageBucket: "syncaudioplay.firebasestorage.app",
+        messagingSenderId: "556142851295",
+        appId: "1:556142851295:web:38b02aeae776d5e157256a",
+        measurementId: "G-ZPG03GBV0E"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    fileInput.addEventListener('change', function () {
-      const file = this.files[0];
-      if (file) {
-        audio.src = URL.createObjectURL(file);
-        audio.style.display = 'block';
-      }
+    const player = document.getElementById("audioPlayer");
+    const input = document.getElementById("fileInput");
+
+    let isMaster = false;
+
+    // Quand tu uploades un fichier, tu es le master (chef de la lecture)
+    input.addEventListener("change", () => {
+      const file = input.files[0];
+      const url = URL.createObjectURL(file);
+      player.src = url;
+      isMaster = true;
     });
 
-    function startCountdown() {
-      if (!audio.src) {
-        alert("Tu dois d'abord choisir un fichier !");
-        return;
+    // Le chef envoie les events de play/pause/time
+    player.addEventListener("play", () => {
+      if (isMaster) db.ref("sync").set({ action: "play", time: player.currentTime });
+    });
+
+    player.addEventListener("pause", () => {
+      if (isMaster) db.ref("sync").set({ action: "pause", time: player.currentTime });
+    });
+
+    player.addEventListener("seeked", () => {
+      if (isMaster) db.ref("sync").set({ action: "seek", time: player.currentTime });
+    });
+
+    // Les autres écoutent et se synchronisent
+    db.ref("sync").on("value", snap => {
+      const data = snap.val();
+      if (!isMaster && data) {
+        player.currentTime = data.time;
+        if (data.action === "play") player.play();
+        if (data.action === "pause") player.pause();
       }
-
-      let countdown = 3;
-      const countdownDiv = document.getElementById('countdown');
-      countdownDiv.innerText = countdown;
-
-      const interval = setInterval(() => {
-        countdown--;
-        if (countdown > 0) {
-          countdownDiv.innerText = countdown;
-        } else {
-          clearInterval(interval);
-          countdownDiv.innerText = '🎧 GO!';
-          audio.play();
-        }
-      }, 1000);
-    }
+    });
   </script>
 </body>
 </html>
