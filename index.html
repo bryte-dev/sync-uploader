@@ -2,64 +2,107 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Synchronised Player 🔊</title>
+  <title>🔥 Audio Sync P2P</title>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>🔥 Sync Audio Player</h1>
-  <input type="file" id="fileInput" accept="audio/mpeg, audio/wav">
-  <br>
+  <h2>🎧 Audio Share & Sync</h2>
+
+  <div>
+    <label for="fileInput">Choisir un fichier audio :</label>
+    <input type="file" id="fileInput" accept="audio/*">
+  </div>
+
   <audio id="audioPlayer" controls></audio>
 
+  <p><strong>Ton ID Peer :</strong> <span id="peerId">Chargement…</span></p>
+  <input type="text" id="connectToId" placeholder="ID du pote">
+  <button id="connectBtn">Connecter 🔗</button>
+
   <script>
-    // === CONFIG FIREBASE ===
+    // --- CONFIG FIREBASE ---
     const firebaseConfig = {
         apiKey: "AIzaSyBNtP-si49U1vt7_AaMu7jEezugoW1fRf0",
-        authDomain: "syncaudioplay.firebaseapp.com",
-        databaseURL: "https://syncaudioplay-default-rtdb.firebaseio.com",
-        projectId: "syncaudioplay",
-        storageBucket: "syncaudioplay.firebasestorage.app",
-        messagingSenderId: "556142851295",
-        appId: "1:556142851295:web:38b02aeae776d5e157256a",
-        measurementId: "G-ZPG03GBV0E"
+  authDomain: "syncaudioplay.firebaseapp.com",
+  databaseURL: "https://syncaudioplay-default-rtdb.firebaseio.com",
+  projectId: "syncaudioplay",
+  storageBucket: "syncaudioplay.firebasestorage.app",
+  messagingSenderId: "556142851295",
+  appId: "1:556142851295:web:38b02aeae776d5e157256a",
+  measurementId: "G-ZPG03GBV0E"
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const player = document.getElementById("audioPlayer");
-    const input = document.getElementById("fileInput");
+    const fileInput = document.getElementById("fileInput");
+    const audioPlayer = document.getElementById("audioPlayer");
+    const peerIdSpan = document.getElementById("peerId");
+    const connectBtn = document.getElementById("connectBtn");
+    const connectToId = document.getElementById("connectToId");
 
+    // === INIT PEERJS ===
+    const peer = new Peer();
+    let conn = null;
     let isMaster = false;
 
-    // Quand tu uploades un fichier, tu es le master (chef de la lecture)
-    input.addEventListener("change", () => {
-      const file = input.files[0];
-      const url = URL.createObjectURL(file);
-      player.src = url;
-      isMaster = true;
+    peer.on("open", id => {
+      peerIdSpan.textContent = id;
     });
 
-    // Le chef envoie les events de play/pause/time
-    player.addEventListener("play", () => {
-      if (isMaster) db.ref("sync").set({ action: "play", time: player.currentTime });
+    peer.on("connection", connection => {
+      conn = connection;
+      conn.on("data", data => {
+        if (data.type === "file") {
+          const blob = new Blob([data.file]);
+          const url = URL.createObjectURL(blob);
+          audioPlayer.src = url;
+        }
+      });
     });
 
-    player.addEventListener("pause", () => {
-      if (isMaster) db.ref("sync").set({ action: "pause", time: player.currentTime });
-    });
+    connectBtn.onclick = () => {
+      const id = connectToId.value;
+      conn = peer.connect(id);
+      conn.on("open", () => {
+        console.log("Connecté à ton pote !");
+      });
+    };
 
-    player.addEventListener("seeked", () => {
-      if (isMaster) db.ref("sync").set({ action: "seek", time: player.currentTime });
-    });
+    // === FICHIER AUDIO ===
+    fileInput.onchange = () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        conn.send({ type: "file", file: reader.result });
+        const url = URL.createObjectURL(file);
+        audioPlayer.src = url;
+        isMaster = true;
+      };
+      reader.readAsArrayBuffer(file);
+    };
 
-    // Les autres écoutent et se synchronisent
+    // === SYNC ACTIONS ===
+    audioPlayer.onplay = () => {
+      if (isMaster) db.ref("sync").set({ action: "play", time: audioPlayer.currentTime });
+    };
+
+    audioPlayer.onpause = () => {
+      if (isMaster) db.ref("sync").set({ action: "pause", time: audioPlayer.currentTime });
+    };
+
+    audioPlayer.onseeked = () => {
+      if (isMaster) db.ref("sync").set({ action: "seek", time: audioPlayer.currentTime });
+    };
+
     db.ref("sync").on("value", snap => {
       const data = snap.val();
       if (!isMaster && data) {
-        player.currentTime = data.time;
-        if (data.action === "play") player.play();
-        if (data.action === "pause") player.pause();
+        audioPlayer.currentTime = data.time;
+        if (data.action === "play") audioPlayer.play();
+        if (data.action === "pause") audioPlayer.pause();
       }
     });
   </script>
